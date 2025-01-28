@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pranav's Todo App with File Storage</title>
+    <style>
+        /* Previous styles remain the same */
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+        .todo-container {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .todo-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 8px;
+            font-size: 16px;
+        }
+        input[type="time"] {
+            padding: 8px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .todo-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 4px;
+        }
+        .todo-item.completed {
+            background: #e8f5e9;
+        }
+        .todo-item.completed span {
+            text-decoration: line-through;
+            color: #666;
+        }
+        .delete-btn {
+            background: #f44336;
+            margin-left: 10px;
+        }
+        .delete-btn:hover {
+            background: #da190b;
+        }
+        .file-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px;
+            background: #2196F3;
+            color: white;
+            border-radius: 4px;
+            display: none;
+        }
+        .motivation {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #666;
+        }
+        .greeting {
+            color: #2196F3;
+            margin-bottom: 20px;
+        }
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="todo-container">
+        <h1 class="greeting">Hey Pranav! Ready to crush your goals? 💪</h1>
+        
+        <div class="file-actions">
+            <button onclick="exportTasks()">Save Tasks to File</button>
+            <button onclick="document.getElementById('fileInput').click()">Load Tasks from File</button>
+            <input type="file" id="fileInput" accept=".json" onchange="importTasks(event)">
+        </div>
+
+        <div class="todo-input">
+            <input type="text" id="taskInput" placeholder="What's your next achievement, Pranav?">
+            <input type="time" id="timeInput">
+            <button onclick="addTask()">Add Task</button>
+        </div>
+        
+        <div id="todoList"></div>
+    </div>
+    <div id="notification" class="notification"></div>
+
+    <script>
+        // Request notification permission on page load
+        let notificationPermission = false;
+        
+        async function requestNotificationPermission() {
+            try {
+                const permission = await Notification.requestPermission();
+                notificationPermission = permission === 'granted';
+                if (notificationPermission) {
+                    showNotification("Great! You'll now receive desktop notifications for your tasks! 🔔");
+                } else {
+                    showNotification("Please allow notifications to get task reminders when browser is minimized 🔕");
+                }
+            } catch (error) {
+                console.error('Error requesting notification permission:', error);
+            }
+        }
+
+        // Request permission when page loads
+        if ("Notification" in window) {
+            requestNotificationPermission();
+        }
+        // Store tasks in memory
+        let tasks = [];
+
+        // Load tasks from file
+        async function importTasks(event) {
+            const file = event.target.files[0];
+            if (file) {
+                try {
+                    const text = await file.text();
+                    tasks = JSON.parse(text);
+                    renderTasks();
+                    showNotification("Tasks loaded successfully! 📁");
+                } catch (error) {
+                    showNotification("Error loading tasks file 😕");
+                }
+                event.target.value = ''; // Reset file input
+            }
+        }
+
+        // Save tasks to file
+        function exportTasks() {
+            const tasksJson = JSON.stringify(tasks, null, 2);
+            const blob = new Blob([tasksJson], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `pranav_tasks_${new Date().toLocaleDateString().replace(/\//g, '-')}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showNotification("Tasks saved successfully! 💾");
+        }
+
+        // Add new task
+        function addTask() {
+            const taskInput = document.getElementById('taskInput');
+            const timeInput = document.getElementById('timeInput');
+            const taskText = taskInput.value.trim();
+            
+            if (taskText) {
+                const task = {
+                    id: Date.now(),
+                    text: taskText,
+                    completed: false,
+                    time: timeInput.value,
+                    notified: false,
+                    createdAt: new Date().toISOString()
+                };
+                
+                tasks.push(task);
+                taskInput.value = '';
+                timeInput.value = '';
+                renderTasks();
+                
+                if (task.time) {
+                    setReminder(task);
+                }
+            }
+        }
+
+        // Toggle task completion
+        function toggleTask(id) {
+            const task = tasks.find(t => t.id === id);
+            if (task) {
+                task.completed = !task.completed;
+                task.completedAt = task.completed ? new Date().toISOString() : null;
+                renderTasks();
+                if (task.completed) {
+                    showNotification("Great job completing that task, Pranav! 🎉");
+                }
+            }
+        }
+
+        // Delete task
+        function deleteTask(id) {
+            tasks = tasks.filter(task => task.id !== id);
+            renderTasks();
+        }
+
+        // Set reminder
+        function setReminder(task) {
+            if (!task.time) return;
+
+            const [hours, minutes] = task.time.split(':');
+            const reminderTime = new Date();
+            reminderTime.setHours(hours, minutes, 0);
+
+            if (reminderTime < new Date()) return;
+
+            setTimeout(() => {
+                if (!task.completed && !task.notified) {
+                    showNotification(`Time to tackle this task, Pranav: ${task.text}`, true);
+                    task.notified = true;
+                }
+            }, reminderTime - new Date());
+        }
+
+        // Show notification
+        function showNotification(message, useDesktopNotification = false) {
+            // Always show in-app notification
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.style.display = 'block';
+            
+            setTimeout(() => {
+                notification.style.display = 'none';
+            }, 5000);
+
+            // If desktop notification is requested and permission is granted
+            if (useDesktopNotification && notificationPermission) {
+                try {
+                    const notification = new Notification("Pranav's Todo Reminder", {
+                        body: message,
+                        icon: 'https://cdn-icons-png.flaticon.com/512/1950/1950715.png', // Generic todo icon
+                        requireInteraction: true // Notification will stay until user interacts with it
+                    });
+
+                    notification.onclick = function() {
+                        window.focus();
+                        this.close();
+                    };
+                } catch (error) {
+                    console.error('Error showing desktop notification:', error);
+                }
+            }
+        }
+
+        // Render tasks
+        function renderTasks() {
+            const todoList = document.getElementById('todoList');
+            todoList.innerHTML = '';
+            
+            // Sort tasks: incomplete first, then by creation date
+            const sortedTasks = [...tasks].sort((a, b) => {
+                if (a.completed === b.completed) {
+                    return new Date(b.createdAt) - new Date(a.createdAt);
+                }
+                return a.completed ? 1 : -1;
+            });
+
+            sortedTasks.forEach(task => {
+                const div = document.createElement('div');
+                div.className = `todo-item ${task.completed ? 'completed' : ''}`;
+                
+                div.innerHTML = `
+                    <input type="checkbox" ${task.completed ? 'checked' : ''} 
+                           onclick="toggleTask(${task.id})">
+                    <span>${task.text}</span>
+                    ${task.time ? `<span style="margin-left: auto">${task.time}</span>` : ''}
+                    <button class="delete-btn" onclick="deleteTask(${task.id})">Delete</button>
+                `;
+                
+                todoList.appendChild(div);
+            });
+        }
+
+        // Add keyboard support
+        document.getElementById('taskInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                addTask();
+            }
+        });
+
+        // Initial render
+        renderTasks();
+    </script>
+</body>
+</html>
